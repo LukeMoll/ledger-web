@@ -17,6 +17,23 @@
         main {background: #eee;}
         /* input, label, select {float: left;} */
 
+        main div.flex {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            justify-content: space-between;
+            align-items: center;
+            align-content: stretch;
+        }
+
+        main div.flex select {
+            flex-grow: 1;
+        }
+
+        main div.flex button, main div.flex label {
+            flex-grow: 0;
+        }
+
         input[type=text], input[type=number], select, button {
             padding: 8px;
             margin: 4px;
@@ -350,13 +367,13 @@
             <label for="money-in">in</label>
         </div>
 
-        <div>
+        <div class="flex">
             <select id="account-one"></select>
             <label for="account-two"></label>
             <!-- <button onclick="addAccount()">&#10133;</button> -->
             <!-- <button onclick="addAccount()">&#65291;</button> -->
-            <button onclick="addAccount()">+</button>
             <select id="account-two"></select>
+            <button onclick="addAccount()">+</button>
         </div>
 
         <div>
