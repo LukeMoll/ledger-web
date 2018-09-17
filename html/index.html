@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Ledger web</title>
+    <style>
+        body {
+            background: #eee;
+            color: #333;
+            font-family: sans-serif;
+            --form-font-coefficient: 1.5;
+
+            overflow: hidden; /* needed so our toast doesn't look weird */
+        }
+        main {background: #eee;}
+        /* input, label, select {float: left;} */
+
+        input[type=text], input[type=number], select, button {
+            padding: 8px;
+            margin: 4px;
+            font-size: calc(var(--form-font-coefficient) * 100%);
+            background: white;
+        }
+
+        label {
+            font-size: calc(var(--form-font-coefficient) * 100%);
+        }
+
+        input#description {
+            box-sizing: border-box;
+            width: 100%;
+            clear: both;
+        }
+
+        input#amount {width: calc(var(--form-font-coefficient) * 6ex);}
+
+        label[for=amount] {
+            margin-left: 8px;
+        }
+
+        input[name=money-in-out] {
+            /* scale: 1.2; */
+            transform: scale(1.5);
+        }
+
+        select#account-one, select#account-two, select#account-new {
+            font-size: initial;
+            box-sizing: border-box;
+            width: 40%;
+        }
+
+        select#account-two {float: right;}
+        label[for=account-two] {
+            box-sizing: border-box;
+            /* margin-left: 5%; */
+        }
+
+        label[for=account-two]::after { content: "→"; }
+        label[for=account-two].reverse::after { content: "←"; }
+
+        label[for=account-two] ~ button {
+            font-weight: bolder;
+            font-size: initial;
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+
+        button {
+            border: 1px solid darkgray;
+            font-size: 120%;
+            float: right;
+        }
+
+        button.toast-toggle {
+            background: tan;
+        }
+
+        #toast {
+            position: absolute;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 15px;
+            padding: 10px;
+            left: 0;
+            right: 0;
+            bottom: 20px;
+            transform: translateY(100px);
+            transition: transform 0.2s ease-in-out;
+
+            width: 50%;
+            opacity: 0.8;
+            background: #444;
+            color: #eee;
+            /* font-weight: bold; */
+            text-align: center;
+        
+        }
+
+        #toast.active {
+            transform: translateY(0);
+        }
+
+        #modal-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -100;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out, z-index 0.5s step-end;
+        }
+
+        #modal {
+            background: #eee;
+            width: 80%;
+            margin: 20px auto;
+            padding: 15px;
+            border: 1px solid darkgray;
+            border-radius: 10px;
+            box-shadow: rgba(0,0,0,0.5) 0 0 0 2000px;
+
+            transform: translateY(-500px);
+            transition: transform 0.5s ease-in-out;
+        }
+
+        #modal-container.active {
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out, z-index 0.5s step-start;
+        }
+
+        #modal-container.active #modal {
+            transform: translateY(0);
+        }
+
+        #modal > div {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #modal input, #modal select {
+            width: 100%;
+        }
+
+        #modal label {
+            display: block;
+            margin: auto;
+        }
+
+        #modal div:last-child {
+            justify-content: flex-end;
+        }
+    </style>
+    <style>
+    @media (min-width: 512px) {
+        main {
+            width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            margin-top: 50px;
+            margin-bottom: 10px;
+        }
+
+        #toast {
+            width: 256px;
+        }
+    }
+    </style>
+    <script>
+
+        function clearAccounts(...eles) {
+            for(let ele of eles) { 
+                while(ele.firstChild) {ele.removeChild(ele.firstChild);}
+            }
+        }
+
+        function addRootAccount(...eles) {
+            for(let ele of eles) {
+                let opt = document.createElement("option");
+                opt.value = "";
+                opt.innerHTML = "(No parent)";
+                ele.appendChild(opt);
+            }
+        }
+
+        function populateAccounts(...eles) {
+            let req = new Request('/api/v0/accounts');
+            fetch(req, {credentials: "same-origin"})
+                .then(req => req.json())
+                .then(accounts => {
+                    console.log(accounts);
+                    let walked = walkAccounts(accounts);
+                    walked.forEach(kvp => {
+                        for(let ele of eles) {
+                            console.log(ele);
+                            let newEle = document.createElement("option");
+                            newEle.value = kvp.value;
+                            newEle.innerHTML = kvp.name;
+                            ele.appendChild(newEle);
+                        }
+                    })
+                })
+        }
+
+        function walkAccounts(accounts, path=[]) {
+            let list = [];
+            for(let key in accounts) {
+                list.push({
+                    name: (path.length > 0?"-".repeat(path.length) + " ":"") + key,
+                    value:(path.length > 0?path.join(":") + ":":"") + key
+                });
+                if(typeof(accounts[key]) === "object") {
+                    let subaccounts = walkAccounts(accounts[key], path.concat(key));
+                    list.push(...subaccounts)
+                }
+            }
+            return list;
+        }
+
+        function init() {
+            let eles = [document.getElementById("account-one"), 
+                        document.getElementById("account-two"),
+                        document.getElementById("account-parent")];
+            clearAccounts(...eles);
+            addRootAccount(document.getElementById("account-parent"));
+            populateAccounts(...eles);
+        }
+
+        function reset() {
+            document.getElementById("description").value = "";
+            document.getElementById("amount").value = null;
+            document.getElementById("money-out").checked = "checked";
+            document.querySelector("label[for=account-two]").classList.remove("reverse");
+            document.querySelector("#account-one option:first-child").selected = "selected";
+            document.querySelector("#account-two option:first-child").selected = "selected";
+        }
+
+        function toast(message) {
+            const toastEle = document.getElementById("toast");
+            let delay = 0;
+            if(toastEle.classList.contains("active")) {
+                toastEle.classList.remove("active");
+                delay = 200;
+            }
+            setTimeout(() => {
+                document.getElementById("toast-message").innerHTML = message;
+                toastEle.classList.add("active");
+                setTimeout(() => {
+                    toastEle.classList.remove("active");
+                }, 5000)
+            }, delay)
+        }
+
+        function addAccount() {
+            let modal = document.getElementById("modal-container");
+            document.getElementById("account-name").value = ""
+            document.querySelector("#account-parent option:first-child").selected = "selected";
+            modal.classList.add("active");
+        }
+
+        function cancelModal() {
+            let modal = document.getElementById("modal-container");
+            modal.classList.remove("active");
+        }
+
+        function submitAccount() {
+            let body = {
+                name: document.getElementById("account-name").value,
+                parent: document.getElementById("account-parent").value
+            };
+
+            let req = new Request("/api/v0/account", {
+                method: "PUT",
+                credentials: "same-origin",
+                body: JSON.stringify(body),
+                headers: {"Content-type": "application/json"}
+            });
+            fetch(req).then(res => {
+                if(res.ok) {
+                    toast("Added new account.");
+                    let selects = [document.getElementById("account-one"), 
+                        document.getElementById("account-two"),
+                        document.getElementById("account-parent")];
+                    clearAccounts(...selects);
+                    addRootAccount(document.getElementById("account-parent"));
+                    populateAccounts(...selects);
+                    console.log(`Populated.`);
+                }
+                else {
+                    res.text().then(resBody => {
+                        toast(`Error ${res.status}: ${resBody}.`);
+                    });
+                }
+            }).catch(err => toast(`Error occurred while sending: ${err}`));
+
+            document.getElementById("modal-container").classList.remove("active");
+        }
+
+        function submit() {
+            let body = {
+                description: document.getElementById("description").value,
+                amount: document.querySelector("input[name=money-in-out]:checked").value * 
+                        document.getElementById("amount").value,
+                accountOne: document.getElementById("account-one").value,
+                accountTwo: document.getElementById("account-two").value
+            };
+            
+
+            let req = new Request("/api/v0/record", {
+                method: "PUT",
+                credentials: "same-origin",
+                body: JSON.stringify(body),
+                headers: {
+                    "Content-type": "application/json"
+                }
+            })
+            fetch(req).then(res => {
+                if(res.ok) {
+                    toast("Added record successfully.");
+                    reset();
+                }
+                else {
+                    res.text().then(resBody => {
+                        toast(`Error ${res.status}: ${resBody}`);
+                    });
+                }
+            }).catch(err => {
+                toast(`Error occurred while sending: ${err}`);
+            })
+        }
+    </script>
+</head>
+<body onload="init()">
+    <main>
+        <div>
+            <input type="text" id="description" placeholder="Description">
+        </div>
+
+        <div>
+            <label for="amount">£</label>
+            <input type="number" id="amount" placeholder="0.00" min="0" step="0.01">
+            
+            <input type="radio" id="money-out" name="money-in-out" value="-1" onchange="document.querySelector('label[for=account-two]').classList.remove('reverse')" checked/>
+            <label for="money-out">out</label>
+    
+            <input type="radio" id="money-in" name="money-in-out" value="1" onchange="document.querySelector('label[for=account-two]').classList.add('reverse')"/>
+            <label for="money-in">in</label>
+        </div>
+
+        <div>
+            <select id="account-one"></select>
+            <label for="account-two"></label>
+            <!-- <button onclick="addAccount()">&#10133;</button> -->
+            <!-- <button onclick="addAccount()">&#65291;</button> -->
+            <button onclick="addAccount()">+</button>
+            <select id="account-two"></select>
+        </div>
+
+        <div>
+            <!-- idk why floating right reverses this order. -->
+            <button onclick="submit()">Go</button>
+            <button onclick="reset()">Clear</button>
+            <!-- CSS is weird yo -->
+        </div>
+    </main>
+
+    <div id="toast">
+        <span id="toast-message">My toast message here</span>
+    </div>
+
+    <div id="modal-container">
+        <div id="modal">
+            <h2>New account</h2>
+            <div>
+                <label for="account-name">Name: </label><input type="text" id="account-name" placeholder="Account name">
+            </div>
+            <div>
+                <label for="account-parent">Parent: </label><select id="account-parent"></select>
+            </div>
+            <div>
+                <button onclick="cancelModal()">Cancel</button>
+                <button onclick="submitAccount()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
