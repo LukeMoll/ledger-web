@@ -187,7 +187,7 @@
         }
 
         function populateAccounts(...eles) {
-            let req = new Request('/api/v0/accounts');
+            let req = new Request('api/v0/accounts');
             fetch(req, {credentials: "same-origin"})
                 .then(req => req.json())
                 .then(accounts => {
@@ -272,7 +272,7 @@
                 parent: document.getElementById("account-parent").value
             };
 
-            let req = new Request("/api/v0/account", {
+            let req = new Request("api/v0/account", {
                 method: "PUT",
                 credentials: "same-origin",
                 body: JSON.stringify(body),
@@ -309,7 +309,7 @@
             };
             
 
-            let req = new Request("/api/v0/record", {
+            let req = new Request("api/v0/record", {
                 method: "PUT",
                 credentials: "same-origin",
                 body: JSON.stringify(body),
